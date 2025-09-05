@@ -1,0 +1,25 @@
+<!-- templates/album.html -->
+{% extends 'base.html' %}
+{% block title %}{{ album.title }} - {{ category.name }} - 图片库{% endblock %}
+{% block content %}
+<nav class="breadcrumbs">
+  <a href="{{ url_for('index') }}">全部分类</a>
+  <span>/</span>
+  <a href="{{ url_for('view_category', category=category.name) }}">{{ category.name }}</a>
+  <span>/</span>
+  <span>{{ album.title }}</span>
+</nav>
+
+<header class="album-head">
+  <h1 class="album-title">{{ album.title }}</h1>
+  <div class="album-sub">{{ album.date|cn_date }} · {{ album.images|length }} 张</div>
+</header>
+
+<div class="grid images">
+  {% for img in album.images %}
+  <a class="img-card" href="{{ url_for('media', filename=album.rel_dir ~ '/' ~ img) }}" target="_blank" rel="noopener">
+    <img loading="lazy" src="{{ url_for('media', filename=album.rel_dir ~ '/' ~ img) }}" alt="{{ album.title }} - {{ loop.index }}">
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

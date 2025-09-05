@@ -1,0 +1,45 @@
+<!-- templates/base.html -->
+<!doctype html>
+<html lang="zh-CN" class="no-js">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}图片库{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script>
+    // 初始暗色模式
+    (function(){
+      const m = localStorage.getItem('theme');
+      if (m === 'dark') document.documentElement.classList.add('dark');
+    })();
+  </script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="{{ url_for('index') }}">📷 图片库</a>
+      <nav class="nav">
+        <a href="{{ url_for('index') }}">全部分类</a>
+      </nav>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换主题">☾</button>
+    </div>
+  </header>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="site-footer container">
+    <p>自动生成于本地 <code>images/</code> 目录 · Flask</p>
+  </footer>
+
+  <script>
+    const btn = document.getElementById('themeToggle');
+    btn?.addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
+      const dark = document.documentElement.classList.contains('dark');
+      localStorage.setItem('theme', dark ? 'dark' : 'light');
+    });
+  </script>
+</body>
+</html>

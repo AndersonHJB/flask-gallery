@@ -1,0 +1,29 @@
+<!-- templates/index.html -->
+{% extends 'base.html' %}
+{% block title %}全部分类 - 图片库{% endblock %}
+{% block content %}
+<h1 class="page-title">全部分类</h1>
+<div class="grid">
+  {% for c in categories %}
+  <a class="card" href="{{ url_for('view_category', category=c.name) }}">
+    <div class="card-cover">
+      {% if c.cover_relfile %}
+      <img loading="lazy" src="{{ url_for('media', filename=c.cover_relfile) }}" alt="{{ c.name }} cover">
+      {% else %}
+      <div class="placeholder">No Cover</div>
+      {% endif %}
+    </div>
+    <div class="card-body">
+      <div class="card-title">{{ c.name }}</div>
+      <div class="card-meta">
+        <span class="badge">{{ c.total_albums }} 相册</span>
+        <span class="badge">{{ c.total_images }} 张</span>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% if not categories %}
+<p class="muted">还没有可用的分类，请在 <code>images/</code> 下创建 <code>分类/相册/图片</code> 结构。</p>
+{% endif %}
+{% endblock %}
