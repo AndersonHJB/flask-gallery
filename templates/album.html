@@ -17,8 +17,8 @@
 
 <div class="grid images">
   {% for img in album.images %}
-  <a class="img-card" href="{{ url_for('media', filename=album.rel_dir ~ '/' ~ img) }}" target="_blank" rel="noopener">
-    <img loading="lazy" src="{{ url_for('media', filename=album.rel_dir ~ '/' ~ img) }}" alt="{{ album.title }} - {{ loop.index }}">
+  <a class="img-card skeleton" href="{{ url_for('media', filename=album.rel_dir ~ '/' ~ img) }}" data-full="{{ url_for('media', filename=album.rel_dir ~ '/' ~ img) }}" target="_blank" rel="noopener">
+    <img class="lazy" data-src="{{ url_for('thumb', filename=album.rel_dir ~ '/' ~ img, w=960) }}" alt="{{ album.title }} - {{ loop.index }}">
   </a>
   {% endfor %}
 </div>

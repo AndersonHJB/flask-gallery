@@ -1,0 +1,31 @@
+<!-- templates/search.html -->
+{% extends 'base.html' %}
+{% block title %}搜索结果 - 图片库{% endblock %}
+{% block content %}
+<h1 class="page-title">搜索结果</h1>
+<p class="muted">关键词：<strong>{{ query or '（无）' }}</strong>；年月：<strong>{{ ym or '（全部）' }}</strong>；分类：<strong>{{ selected_category or '（全部）' }}</strong></p>
+<div class="grid">
+  {% for c, a in results %}
+  <a class="card skeleton" href="{{ url_for('view_album', category=c.name, album=a.folder) }}">
+    <div class="card-cover">
+      {% if a.cover_relfile %}
+      <img class="lazy" data-src="{{ url_for('thumb', filename=a.cover_relfile, w=720) }}" alt="{{ a.title }} cover">
+      {% else %}
+      <div class="placeholder">No Cover</div>
+      {% endif %}
+      <div class="ribbon">{{ a.date|cn_date }}</div>
+    </div>
+    <div class="card-body">
+      <div class="card-title">{{ a.title }}</div>
+      <div class="card-meta">
+        <span class="badge">{{ c.name }}</span>
+        <span class="badge">{{ a.images|length }} 张</span>
+      </div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% if not results %}
+<p class="muted">没有找到匹配的相册，试试更换关键词或放宽筛选条件。</p>
+{% endif %}
+{% endblock %}

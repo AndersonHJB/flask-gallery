@@ -7,14 +7,15 @@ import datetime as dt
 import re
 import time
 
-from flask import Flask, render_template, send_from_directory, abort, url_for
-from werkzeug.utils import safe_join
+from flask import Flask, render_template, send_from_directory, abort, url_for, request
 
 # ====== 基本配置 ======
 BASE_DIR = Path(__file__).resolve().parent
-IMAGES_ROOT = BASE_DIR / "images"  # 你的图片根目录
+IMAGES_ROOT = BASE_DIR / "images"   # 原始图片根目录
+THUMBS_ROOT = BASE_DIR / "thumbs"   # 缩略图缓存目录（自动生成）
 ALLOWED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
-CACHE_TTL_SECONDS = 5  # 扫描缓存的生存期（秒）
+CACHE_TTL_SECONDS = 5  # 目录扫描缓存的生存期（秒）
+THUMB_DEFAULT_W = 640  # 默认缩略图宽度
 
 app = Flask(__name__)
 
@@ -50,28 +51,21 @@ class Category:
 
     @property
     def cover_relfile(self) -> Optional[str]:
-        # 选第一个有封面的相册
         for a in self.albums:
             if a.cover_relfile:
                 return a.cover_relfile
         return None
 
 
-# ====== 工具函数 ======
+# ====== 工具函数：解析标题/日期 ======
 _cn_patterns = [
-    # 标题在前：天安门 2025 年 8 月 24 日
     re.compile(r"^(?P<title>.+?)\s*(?P<y>\d{4})\s*年\s*(?P<m>\d{1,2})\s*月(?:\s*(?P<d>\d{1,2})\s*日)?$"),
-    # 日期在前：2025 年 8 月 24 日 天安门
     re.compile(r"^(?P<y>\d{4})\s*年\s*(?P<m>\d{1,2})\s*月(?:\s*(?P<d>\d{1,2})\s*日)?\s*(?P<title>.+?)$"),
 ]
-
 _iso_patterns = [
-    # 标题在前：天安门 2025-08-24 / 2025/08/24 / 2025.08.24 / 2025-08
     re.compile(r"^(?P<title>.+?)\s*(?P<y>\d{4})[-/.](?P<m>\d{1,2})(?:[-/.](?P<d>\d{1,2}))?$"),
-    # 日期在前：2025-08-24 天安门
     re.compile(r"^(?P<y>\d{4})[-/.](?P<m>\d{1,2})(?:[-/.](?P<d>\d{1,2}))?\s*(?P<title>.+?)$"),
 ]
-
 
 def _to_date(y: str, m: str, d: Optional[str]) -> Optional[dt.date]:
     try:
@@ -148,6 +142,20 @@ def get_catalog() -> List[Category]:
     return _cache["data"]
 
 
+def iter_albums():
+    for c in get_catalog():
+        for a in c.albums:
+            yield c, a
+
+
+# ====== 模板上下文（给 header 的筛选下拉用） ======
+@app.context_processor
+def inject_globals():
+    cats = get_catalog()
+    years = sorted({a.date.year for c in cats for a in c.albums if a.date}, reverse=True)
+    return dict(all_categories=cats, filter_years=years)
+
+
 # ====== Jinja 过滤器 ======
 @app.template_filter("cn_date")
 def jinja_cn_date(d: Optional[dt.date]) -> str:
@@ -156,7 +164,59 @@ def jinja_cn_date(d: Optional[dt.date]) -> str:
     return f"{d.year} 年 {d.month} 月{f' {d.day} 日' if d.day else ''}"
 
 
-# ====== 路由 ======
+# ====== 缩略图服务 ======
+# 说明：首次访问自动生成到 /thumbs 缓存目录；之后直接命中磁盘 + 浏览器长缓存
+try:
+    from PIL import Image
+except Exception:
+    Image = None
+
+THUMBS_ROOT.mkdir(exist_ok=True)
+
+@app.route("/thumb/<path:filename>")
+def thumb(filename: str):
+    # 可选参数 ?w=640 控制宽度
+    width_arg = request.args.get("w", str(THUMB_DEFAULT_W))
+    try:
+        w = max(120, min(4096, int(width_arg)))
+    except Exception:
+        w = THUMB_DEFAULT_W
+
+    src = (IMAGES_ROOT / filename).resolve()
+    try:
+        src.relative_to(IMAGES_ROOT)
+    except Exception:
+        abort(404)
+    if not src.exists() or src.suffix.lower() not in ALLOWED_EXTS:
+        abort(404)
+
+    rel = str(src.relative_to(IMAGES_ROOT)).replace("\\", "/")
+    dst = THUMBS_ROOT / f"{Path(rel).with_suffix('')}_w{w}.jpg"
+    dst.parent.mkdir(parents=True, exist_ok=True)
+
+    # 若原图更新，缩略图自动重建
+    if (not dst.exists()) or (dst.stat().st_mtime < src.stat().st_mtime):
+        if Image is None:
+            # 没装 Pillow 就直接回源（不建议）
+            resp = send_from_directory(IMAGES_ROOT, rel)
+            resp.headers['Cache-Control'] = 'public, max-age=86400'
+            return resp
+        try:
+            with Image.open(src) as im:
+                im = im.convert('RGB')  # 统一转为 JPEG，兼容性最好
+                im.thumbnail((w, w * 10000), Image.Resampling.LANCZOS)  # 按宽缩放
+                im.save(dst, 'JPEG', quality=85, optimize=True, progressive=True)
+        except Exception:
+            resp = send_from_directory(IMAGES_ROOT, rel)
+            resp.headers['Cache-Control'] = 'public, max-age=86400'
+            return resp
+
+    resp = send_from_directory(THUMBS_ROOT, str(dst.relative_to(THUMBS_ROOT)))
+    resp.headers['Cache-Control'] = 'public, max-age=31536000, immutable'
+    return resp
+
+
+# ====== 页面路由 ======
 @app.route("/")
 def index():
     cats = get_catalog()
@@ -184,6 +244,40 @@ def view_album(category: str, album: str):
     return render_template("album.html", category=cat, album=alb)
 
 
+@app.route('/search')
+def search():
+    q = request.args.get('q', '').strip()
+    ym = request.args.get('ym', '').strip()      # 支持 YYYY 或 YYYY-MM
+    cat = request.args.get('category', '').strip()
+
+    results: List[Tuple[Category, Album]] = []
+
+    year = month = None
+    if ym:
+        m = re.match(r'^(\d{4})(?:[-/\\.](\d{1,2}))?$', ym)
+        if m:
+            year = int(m.group(1))
+            month = int(m.group(2)) if m.group(2) else None
+
+    for c, a in iter_albums():
+        if cat and c.name != cat:
+            continue
+        if year:
+            if not a.date or a.date.year != year:
+                continue
+            if month and a.date.month != month:
+                continue
+        if q:
+            text = f"{a.title} {c.name} {a.folder}".lower()
+            if q.lower() not in text:
+                continue
+        results.append((c, a))
+
+    results.sort(key=lambda t: (t[1].date is not None, t[1].date or dt.date(1,1,1), t[1].title), reverse=True)
+
+    return render_template('search.html', query=q, ym=ym, selected_category=cat, results=results)
+
+
 @app.route("/media/<path:filename>")
 def media(filename: str):
     # 限制仅服务图片文件
@@ -195,7 +289,9 @@ def media(filename: str):
     if p.suffix.lower() not in ALLOWED_EXTS or not p.exists():
         abort(404)
     rel = str(p.relative_to(IMAGES_ROOT)).replace("\\", "/")
-    return send_from_directory(IMAGES_ROOT, rel)
+    resp = send_from_directory(IMAGES_ROOT, rel)
+    resp.headers['Cache-Control'] = 'public, max-age=86400'  # 原图 1 天缓存
+    return resp
 
 
 if __name__ == "__main__":

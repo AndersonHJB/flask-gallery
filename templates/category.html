@@ -4,13 +4,12 @@
 {% block content %}
 <nav class="breadcrumbs"><a href="{{ url_for('index') }}">全部分类</a> <span>/</span> <span>{{ category.name }}</span></nav>
 <h1 class="page-title">{{ category.name }} · 相册</h1>
-
 <div class="grid">
   {% for a in category.albums %}
-  <a class="card" href="{{ url_for('view_album', category=category.name, album=a.folder) }}">
+  <a class="card skeleton" href="{{ url_for('view_album', category=category.name, album=a.folder) }}">
     <div class="card-cover">
       {% if a.cover_relfile %}
-      <img loading="lazy" src="{{ url_for('media', filename=a.cover_relfile) }}" alt="{{ a.title }} cover">
+      <img class="lazy" data-src="{{ url_for('thumb', filename=a.cover_relfile, w=720) }}" alt="{{ a.title }} cover">
       {% else %}
       <div class="placeholder">No Cover</div>
       {% endif %}

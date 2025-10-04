@@ -6,21 +6,24 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>{% block title %}图片库{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <script>
-    // 初始暗色模式
-    (function(){
-      const m = localStorage.getItem('theme');
-      if (m === 'dark') document.documentElement.classList.add('dark');
-    })();
-  </script>
+  <script>(function(){const m=localStorage.getItem('theme');if(m==='dark')document.documentElement.classList.add('dark');})();</script>
 </head>
 <body>
   <header class="site-header">
     <div class="container header-inner">
       <a class="brand" href="{{ url_for('index') }}">📷 图片库</a>
-      <nav class="nav">
-        <a href="{{ url_for('index') }}">全部分类</a>
-      </nav>
+      <nav class="nav"><a href="{{ url_for('index') }}">全部分类</a></nav>
+      <form class="searchbar" action="{{ url_for('search') }}" method="get">
+        <input class="input" type="search" name="q" placeholder="关键词…" value="{{ request.args.get('q','') }}">
+        <input class="input" type="month" name="ym" value="{{ request.args.get('ym','') }}"/>
+        <select class="input" name="category">
+          <option value="">全部分类</option>
+          {% for c in all_categories %}
+            <option value="{{ c.name }}" {% if request.args.get('category')==c.name %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+        <button class="btn" type="submit">搜索</button>
+      </form>
       <button class="theme-toggle" id="themeToggle" aria-label="切换主题">☾</button>
     </div>
   </header>
@@ -33,13 +36,44 @@
     <p>自动生成于本地 <code>images/</code> 目录 · Flask</p>
   </footer>
 
+  <!-- 轻量灯箱 -->
+  <div id="lightbox" class="lightbox hidden" aria-hidden="true">
+    <button class="lb-close" aria-label="关闭">×</button>
+    <button class="lb-prev" aria-label="上一张">‹</button>
+    <img id="lightboxImg" alt="预览" />
+    <button class="lb-next" aria-label="下一张">›</button>
+  </div>
+
   <script>
-    const btn = document.getElementById('themeToggle');
-    btn?.addEventListener('click', () => {
+    // 主题切换
+    document.getElementById('themeToggle')?.addEventListener('click',()=>{
       document.documentElement.classList.toggle('dark');
-      const dark = document.documentElement.classList.contains('dark');
-      localStorage.setItem('theme', dark ? 'dark' : 'light');
+      localStorage.setItem('theme',document.documentElement.classList.contains('dark')?'dark':'light');
     });
+
+    // 懒加载 + 骨架占位
+    const lazyImgs=[...document.querySelectorAll('img.lazy')];
+    const io='IntersectionObserver'in window?new IntersectionObserver(es=>{
+      es.forEach(e=>{if(e.isIntersecting){const img=e.target;io.unobserve(img);const s=img.getAttribute('data-src');if(s)img.src=s;}});
+    },{rootMargin:'200px'}):null;
+    lazyImgs.forEach(img=>{if(io)io.observe(img);else img.src=img.getAttribute('data-src');img.addEventListener('load',()=>{img.classList.add('loaded');img.closest('.skeleton')?.classList.add('loaded');});});
+
+    // 轻量灯箱
+    const lb=document.getElementById('lightbox');
+    const lbImg=document.getElementById('lightboxImg');
+    const btnClose=lb.querySelector('.lb-close');
+    const btnPrev=lb.querySelector('.lb-prev');
+    const btnNext=lb.querySelector('.lb-next');
+    let gallery=[];let cur=0;
+    function openLB(i){cur=i;lbImg.src=gallery[cur];lb.classList.remove('hidden');lb.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';}
+    function closeLB(){lb.classList.add('hidden');lb.setAttribute('aria-hidden','true');document.body.style.overflow='';}
+    function prev(){cur=(cur-1+gallery.length)%gallery.length;lbImg.src=gallery[cur];}
+    function next(){cur=(cur+1)%gallery.length;lbImg.src=gallery[cur];}
+    btnClose.addEventListener('click',closeLB);btnPrev.addEventListener('click',prev);btnNext.addEventListener('click',next);
+    lb.addEventListener('click',e=>{if(e.target===lb)closeLB();});
+    document.addEventListener('keydown',e=>{if(lb.classList.contains('hidden'))return;if(e.key==='Escape')closeLB();if(e.key==='ArrowLeft')prev();if(e.key==='ArrowRight')next();});
+    const cards=[...document.querySelectorAll('.img-card')];
+    if(cards.length){gallery=cards.map(a=>a.dataset.full);cards.forEach((a,i)=>a.addEventListener('click',ev=>{ev.preventDefault();openLB(i);}));}
   </script>
 </body>
 </html>
